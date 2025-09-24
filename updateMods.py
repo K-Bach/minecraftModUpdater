@@ -1,73 +1,49 @@
 import os
 import requests
 import shutil
-import zipfile
-import json
-import urllib.parse
+import hashlib
 
-MODS_DIR = "./mods"
+MODS_DIR = "C:\\Users\\Karim\\AppData\\Roaming\\.minecraft\\mods"
 MINECRAFT_VERSION = "1.21.8"
 LOADER = "fabric"
 BACKUP_DIR = os.path.join(MODS_DIR, "backup")
 
-SEARCH_PROJECT = 'https://api.modrinth.com/v2/search?query={}&facets=[["versions:{}"],["categories:{}"]]'
-API_VERSIONS = 'https://api.modrinth.com/v2/project/{}/version?game_versions=["{}"]&loaders=["{}"]'
+GET_PROJECT_FROM_HASH = 'https://api.modrinth.com/v2/version_file/{}/update?algorithm=sha512'
 
-def search_project(name):
-    url = SEARCH_PROJECT.format(urllib.parse.quote(name), MINECRAFT_VERSION, LOADER)
-    try:
-        r = requests.get(url)
-        if r.status_code != 200:
-            return None
-        projects = r.json()
-        if not projects:
-            return None
-        return projects["hits"]
-    except Exception:
-        return None
+def sha512sum(filename, chunk_size=8192):
+    sha512 = hashlib.sha512()
+    with open(filename, "rb") as f:
+        for chunk in iter(lambda: f.read(chunk_size), b""):
+            sha512.update(chunk)
+    return sha512.hexdigest()
 
-# Extract mod names from fabric.mod.json inside the jar
-def get_mod_names_from_jar(jar_path):
-    try:
-        with zipfile.ZipFile(jar_path, "r") as jar:
-            if "fabric.mod.json" not in jar.namelist():
-                return None
-            with jar.open("fabric.mod.json") as f:
-                data = json.load(f)
-                project = search_project(data.get("name"))
-                projectId = project[0]["project_id"] if project else None
-                return [data.get("id"), data.get("name").replace(" ", "-"), projectId]
-    except Exception as e:
-        print(f" Could not read {jar_path}: {e}")
-        return None
+def get_project(jar_path):
+    hash = sha512sum(jar_path)
+    payload = {
+        "loaders": [LOADER],
+        "game_versions": [MINECRAFT_VERSION]
+    }
 
-# Get the latest version of a mod from Modrinth
-def get_latest_version(project_slug):
-    url = API_VERSIONS.format(project_slug, MINECRAFT_VERSION, LOADER)
-    try:
-        r = requests.get(url)
-        if r.status_code != 200:
-            return None
-        versions = r.json()
-        if not versions:
-            return None
-        return versions[0]
-    except Exception:
-        return None
+    headers = {
+        "Content-Type": "application/json"
+    }
 
-# Download the mod file from Modrinth
+    response = requests.post(GET_PROJECT_FROM_HASH.format(hash), json=payload, headers=headers)
+
+    if response.status_code == 200:
+        print('\nProject found!')
+        return response.json()
+    else:
+        print(f"\nError {response.status_code}: {response.text}")
+
 def download_mod(version, target_path):
-    files = version.get("files", [])
-    for f in files:
-        if f["filename"].endswith(".jar"):
-            url = f["url"]
-            print(f" ⬇️ Downloading {f['filename']}...")
-            r = requests.get(url, stream=True)
-            with open(target_path, "wb") as out:
-                shutil.copyfileobj(r.raw, out)
-            return f["filename"]
-    return None
-
+    """Download the .jar file from Modrinth release files."""
+    url = version["files"][0]["url"]
+    print(f" Downloading {version['files'][0]['filename']}...")
+    r = requests.get(url, stream=True)
+    with open(target_path, "wb") as out:
+        shutil.copyfileobj(r.raw, out)
+    return version["files"][0]["filename"]
 
 def main():
     os.makedirs(BACKUP_DIR, exist_ok=True)
@@ -77,25 +53,15 @@ def main():
             continue
 
         mod_path = os.path.join(MODS_DIR, mod)
-        project_names = get_mod_names_from_jar(mod_path)
-        print(f"\n{project_names}")
-
-        if not project_names:
-            print(f"\nSkipping {mod} (no fabric.mod.json)")
+        project = get_project(mod_path)
+        
+        if not project:
+            print(f" Skipping {mod}")
             continue
 
-        version = None
-        for n in project_names:
-            version = get_latest_version(n)
-            if version:
-                break
+        latest_filename = project["files"][0]["filename"]
+        print(f" Checking {mod}...")
 
-        print(f"\nChecking {mod}...")
-        if not version:
-            print(" Could not find project/version on Modrinth.")
-            continue
-
-        latest_filename = version["files"][0]["filename"]
         if latest_filename == mod:
             print(" Already up to date.")
             continue
@@ -106,7 +72,7 @@ def main():
         print(f"   Backed up old mod to {backup_path}")
 
         new_mod_path = os.path.join(MODS_DIR, latest_filename)
-        downloaded = download_mod(version, new_mod_path)
+        downloaded = download_mod(project, new_mod_path)
         if downloaded:
             print(f"   Installed {downloaded}")
         else:
