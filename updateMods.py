@@ -1,8 +1,10 @@
-import os, requests, shutil, hashlib, argparse
+import os, requests, shutil, hashlib, argparse, dotenv
 
-MODS_DIR = "C:\\Users\\Karim\\AppData\\Roaming\\PrismLauncher\\instances\\1.21.8\\minecraft\\mods"
-MINECRAFT_VERSION = "1.21.8"
-LOADER = "fabric"
+dotenv.load_dotenv()
+
+MODS_DIR = os.getenv("MODS_DIR", "")
+MINECRAFT_VERSION = os.getenv("MINECRAFT_VERSION", "")
+LOADER = os.getenv("LOADER", "")
 BACKUP_DIR = os.path.join(MODS_DIR, "backup")
 
 parser = argparse.ArgumentParser(description="Minecraft Mod Updater")
@@ -47,6 +49,7 @@ def get_project(hash):
     else:
         print(f"\nError {response.status_code}: {response.text}")
 
+# Download the mod .jar file from Modrinth
 def download_mod(version, target_path):
     """Download the .jar file from Modrinth release files."""
     url = version["files"][0]["url"]
