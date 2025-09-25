@@ -1,15 +1,26 @@
-import os
-import requests
-import shutil
-import hashlib
+import os, requests, shutil, hashlib, argparse
 
-MODS_DIR = "C:\\Users\\Karim\\AppData\\Roaming\\.minecraft\\mods"
+MODS_DIR = "C:\\Users\\Karim\\AppData\\Roaming\\PrismLauncher\\instances\\1.21.8\\minecraft\\mods"
 MINECRAFT_VERSION = "1.21.8"
 LOADER = "fabric"
 BACKUP_DIR = os.path.join(MODS_DIR, "backup")
 
+parser = argparse.ArgumentParser(description="Minecraft Mod Updater")
+parser.add_argument("-v", "--Version", default=MINECRAFT_VERSION, help="Minecraft version")
+parser.add_argument("-l", "--Loader", default=LOADER, help="Mod loader")
+parser.add_argument("-d", "--Directory", default=MODS_DIR, help="Mods directory")
+parser.add_argument("-b", "--Backup", default=BACKUP_DIR, help="Backup directory")
+args = parser.parse_args()
+
+MINECRAFT_VERSION = args.Version
+LOADER = args.Loader
+MODS_DIR = args.Directory
+BACKUP_DIR = args.Backup
+
+# Modrinth API endpoint to get project info from a file hash
 GET_PROJECT_FROM_HASH = 'https://api.modrinth.com/v2/version_file/{}/update?algorithm=sha512'
 
+# Compute SHA-512 hash of a file
 def sha512sum(filename, chunk_size=8192):
     sha512 = hashlib.sha512()
     with open(filename, "rb") as f:
@@ -17,8 +28,8 @@ def sha512sum(filename, chunk_size=8192):
             sha512.update(chunk)
     return sha512.hexdigest()
 
-def get_project(jar_path):
-    hash = sha512sum(jar_path)
+# Get project information from Modrinth using the file hash
+def get_project(hash):
     payload = {
         "loaders": [LOADER],
         "game_versions": [MINECRAFT_VERSION]
@@ -53,7 +64,8 @@ def main():
             continue
 
         mod_path = os.path.join(MODS_DIR, mod)
-        project = get_project(mod_path)
+        hash = sha512sum(mod_path)
+        project = get_project(hash)
         
         if not project:
             print(f" Skipping {mod}")
