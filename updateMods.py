@@ -60,6 +60,10 @@ def download_mod(version, target_path):
     return version["files"][0]["filename"]
 
 def main():
+    if not os.path.exists(MODS_DIR):
+        print(f"Mods directory '{MODS_DIR}' does not exist.")
+        return
+    
     os.makedirs(BACKUP_DIR, exist_ok=True)
 
     for mod in os.listdir(MODS_DIR):
